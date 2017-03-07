@@ -2337,6 +2337,8 @@ void MsgInitMenu(HWND hwnd,WPARAM wParam,LPARAM lParam)
   CheckCmd(hmenu,IDM_VIEW_REUSEWINDOW,i);
   i = IniGetInt(L"Settings2",L"SingleFileInstance",0);
   CheckCmd(hmenu,IDM_VIEW_SINGLEFILEINSTANCE,i);
+  i = IniGetInt(L"Settings2",L"AutomaticFileRecovery",1);
+  CheckCmd(hmenu, IDM_VIEW_FILERECOVERY, i);
   bStickyWinPos = IniGetInt(L"Settings2",L"StickyWindowPosition",0);
   CheckCmd(hmenu,IDM_VIEW_STICKYWINPOS,bStickyWinPos);
   CheckCmd(hmenu,IDM_VIEW_ALWAYSONTOP,((bAlwaysOnTop || flagAlwaysOnTop == 2) && flagAlwaysOnTop != 1));
@@ -2374,6 +2376,7 @@ void MsgInitMenu(HWND hwnd,WPARAM wParam,LPARAM lParam)
   EnableCmd(hmenu,IDM_VIEW_REUSEWINDOW,i);
   EnableCmd(hmenu,IDM_VIEW_STICKYWINPOS,i);
   EnableCmd(hmenu,IDM_VIEW_SINGLEFILEINSTANCE,i);
+  EnableCmd(hmenu,IDM_VIEW_FILERECOVERY,i);
   EnableCmd(hmenu,IDM_VIEW_NOSAVERECENT,i);
   EnableCmd(hmenu,IDM_VIEW_NOSAVEFINDREPL,i);
   EnableCmd(hmenu,IDM_VIEW_SAVESETTINGS,i);
@@ -4289,6 +4292,22 @@ LRESULT MsgCommand(HWND hwnd,WPARAM wParam,LPARAM lParam)
       else
         IniSetInt(L"Settings2",L"SingleFileInstance",1);
       break;
+
+    case IDM_VIEW_FILERECOVERY:
+      if (IniGetInt(L"Settings2", L"AutomaticFileRecovery", 0))
+      {
+        IniSetInt(L"Settings2", L"AutomaticFileRecovery", 0);
+        StopFileRecoveryTimer(TRUE);
+        wcscpy(szRecoveryFile, L"");
+      }
+      else
+      {
+        IniSetInt(L"Settings2", L"AutomaticFileRecovery", 1);
+        InitRecoveryFilePath(szCurFile,szRecoveryFile);
+        if (bModified) StartFileRecoveryTimer();
+      }
+      break;
+
 
 
     case IDM_VIEW_ALWAYSONTOP:
@@ -6951,6 +6970,11 @@ unsigned long HashBytes(BYTE *data, int length)
 
 void InitRecoveryFilePath(PWCHAR originalFile, PWCHAR dest)
 {
+  if (IniGetInt(L"Settings2", L"AutomaticFileRecovery", 1) == 0)
+  {
+    wcscpy(dest, L"");
+    return;
+  }
   wcscpy(dest, L"C:\\temp\\gatto");
   wcscat(dest, L"\\");
 
@@ -7040,7 +7064,7 @@ BOOL SaveRecoveryFile()
   int eol = iEOLMode;
   BOOL cancelDataLoss = FALSE;
 
-  if (wcslen(szCurFile) == 0 && (int)SendMessage(hwndEdit,SCI_GETLENGTH,0,0) == 0)
+  if (!bModified || wcslen(szCurFile) == 0 && (int)SendMessage(hwndEdit,SCI_GETLENGTH,0,0) == 0)
   {
     StopFileRecoveryTimer(TRUE);
     return TRUE;
@@ -7215,7 +7239,7 @@ BOOL FileLoadEx(BOOL bDontSave,BOOL bNew,BOOL bReload,BOOL bNoEncDetect,LPCWSTR 
     else 
     {
       InitRecoveryFilePath(szFileName, szRecoveryFileToReadFrom);
-      usedRecoveryInfo = GetFileAttributes(szRecoveryFileToReadFrom) != INVALID_FILE_ATTRIBUTES;
+      usedRecoveryInfo = wcslen(szRecoveryFileToReadFrom) && GetFileAttributes(szRecoveryFileToReadFrom) != INVALID_FILE_ATTRIBUTES;
     }
     fSuccess = FileIO(TRUE, usedRecoveryInfo ? szRecoveryFileToReadFrom : szFileName, bNoEncDetect, &iEncoding, &iEOLMode, &bUnicodeErr, &bFileTooBig, NULL, FALSE, usedRecoveryInfo);
     if (fSuccess) 
@@ -7315,6 +7339,8 @@ BOOL FileSaveEx(BOOL bSaveAlways,BOOL bAsk,BOOL bSaveAs,BOOL bSaveCopy,BOOL bAll
 
   if (bIsRecovered) bAllowSaveToRecovery = TRUE;
 
+  if (wcslen(szRecoveryFile) == 0 || !IniGetInt(L"Settings2", L"AutomaticFileRecovery", 1)) bAllowSaveToRecovery = FALSE;
+
   BOOL bIsEmptyNewFile = FALSE;
   if (lstrlen(szCurFile) == 0) {
     int cchText = (int)SendMessage(hwndEdit,SCI_GETLENGTH,0,0);
@@ -7329,7 +7355,7 @@ BOOL FileSaveEx(BOOL bSaveAlways,BOOL bAsk,BOOL bSaveAs,BOOL bSaveCopy,BOOL bAll
     }
   }
 
-  if (!bSaveAlways && (!bModified && iEncoding == iOriginalEncoding || bIsEmptyNewFile) && !bSaveAs) {
+  if (!bSaveAlways && (!bModified && iEncoding == iOriginalEncoding || bIsEmptyNewFile) && !bSaveAs && (!bModifiedSinceLastRecoverySave && bIsEmptyNewFile)) {
     SaveRecoveryFile(); // Deletes the current empty recovery file
     return TRUE;
   }

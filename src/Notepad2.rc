@@ -325,7 +325,8 @@ BEGIN
         MENUITEM "Minimi&ze To Tray",           IDM_VIEW_MINTOTRAY
         MENUITEM "Transparent &Mode\tCtrl+0",   IDM_VIEW_TRANSPARENT
         MENUITEM SEPARATOR
-        MENUITEM "Single &File Instance",       IDM_VIEW_SINGLEFILEINSTANCE
+        MENUITEM "Single &File Instance", IDM_VIEW_SINGLEFILEINSTANCE
+        MENUITEM "&Automatic File Recovery",       IDM_VIEW_FILERECOVERY
         MENUITEM "File &Change Notification...\tAlt+F5",
                                                 IDM_VIEW_CHANGENOTIFY
         POPUP "Window Title Displa&y"

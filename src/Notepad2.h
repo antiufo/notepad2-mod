@@ -151,6 +151,7 @@ LRESULT MsgCommand(HWND,WPARAM,LPARAM);
 LRESULT MsgNotify(HWND,WPARAM,LPARAM);
 
 BOOL SaveRecoveryFile();
+void InitRecoveryFilePath(PWCHAR originalFile, PWCHAR dest);
 void CALLBACK FileRecoveryTimerCallback(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime);
 void StartFileRecoveryTimer();
 void StopFileRecoveryTimer(BOOL deleteRecoveryFile);
