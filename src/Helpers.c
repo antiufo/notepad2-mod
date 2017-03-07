@@ -353,7 +353,7 @@ BOOL bFreezeAppTitle = FALSE;
 
 BOOL SetWindowTitle(HWND hwnd,UINT uIDAppName,BOOL bIsElevated,UINT uIDUntitled,
                     LPCWSTR lpszFile,int iFormat,BOOL bModified,
-                    UINT uIDReadOnly,BOOL bReadOnly,LPCWSTR lpszExcerpt)
+                    UINT uIDReadOnly,BOOL bReadOnly,LPCWSTR lpszExcerpt,BOOL bIsRecovered)
 {
 
   WCHAR szUntitled[128];
@@ -421,6 +421,11 @@ BOOL SetWindowTitle(HWND hwnd,UINT uIDAppName,BOOL bIsElevated,UINT uIDUntitled,
     lstrcpy(szCachedFile,L"");
     lstrcpy(szCachedDisplayName,L"");
     lstrcat(szTitle,szUntitled);
+  }
+
+  if (bIsRecovered)
+  {
+    lstrcat(szTitle, L" [RECOVERED]");
   }
 
   if (bReadOnly && GetString(uIDReadOnly,szReadOnly,COUNTOF(szReadOnly)))
