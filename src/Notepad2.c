@@ -216,6 +216,7 @@ LPMRULIST  mruReplace;
 DWORD     dwLastIOError;
 WCHAR      szCurFile[MAX_PATH+40];
 WCHAR      szRecoveryFile[MAX_PATH+50];
+WCHAR      szRecoveryDirectory[MAX_PATH];
 BOOL       bIsRecovered = FALSE;
 BOOL       bNotARealSavePoint = FALSE;
 FILEVARS   fvCurFile;
@@ -2059,7 +2060,7 @@ BOOL GetDisplayNameForRecoveryFile(PWCHAR destination, PWCHAR name)
 {
   if (isdigit(name[0]))
   {
-    // Eg. 36275755171385521050--gatto.txt.dat
+    // Eg. 36275755171385521050--example.txt.dat
     PWCHAR idx = wcschr(name, '-');
     if (idx == NULL || *(idx + 1) != '-') return FALSE;
     wcscpy(destination, idx + 2);
@@ -2106,7 +2107,10 @@ void PopulateRecoveredFilesMenu(HMENU menu)
 
   WIN32_FIND_DATA findData;
   iRecoveryMenuItemsCount = 0;
-  HANDLE hFind = FindFirstFile(L"C:\\temp\\gatto\\*.dat", &findData);
+  WCHAR szSearchPath[MAX_PATH];
+  wcscpy(szSearchPath, szRecoveryDirectory);
+  PathAppend(szSearchPath, L"*.dat");
+  HANDLE hFind = FindFirstFile(szSearchPath, &findData);
   if (hFind != -1)
   {
     WCHAR szDisplayName[MAX_PATH];
@@ -5860,6 +5864,18 @@ void LoadSettings()
   IniSectionGetString(pIniSection,L"DefaultDirectory",L"",
     tchDefaultDir,COUNTOF(tchDefaultDir));
 
+
+  if (!IniSectionGetString(pIniSection, L"RecoveryFileDirectory", L"", szRecoveryDirectory, COUNTOF(szRecoveryDirectory)))
+  {
+    SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, SHGFP_TYPE_CURRENT, szRecoveryDirectory);
+    PathAppend(szRecoveryDirectory, L"Notepad2\\Recovered Files");
+  }
+  else
+  {
+    PathAbsoluteFromApp(szRecoveryDirectory, NULL, COUNTOF(szRecoveryDirectory), TRUE);
+  }
+
+
   ZeroMemory(tchFileDlgFilters,sizeof(WCHAR)*COUNTOF(tchFileDlgFilters));
   IniSectionGetString(pIniSection,L"FileDlgFilters",L"",
     tchFileDlgFilters,COUNTOF(tchFileDlgFilters)-2);
@@ -6975,8 +6991,8 @@ void InitRecoveryFilePath(PWCHAR originalFile, PWCHAR dest)
     wcscpy(dest, L"");
     return;
   }
-  wcscpy(dest, L"C:\\temp\\gatto");
-  wcscat(dest, L"\\");
+  wcscpy(dest, szRecoveryDirectory);
+  if(dest[wcslen(dest) - 1] != '\\') wcscat(dest, L"\\");
 
   
   if (wcslen(originalFile) == 0)
@@ -7021,8 +7037,9 @@ void InitRecoveryFilePath(PWCHAR originalFile, PWCHAR dest)
 
 BOOL LoadRecoveryFile(PWCHAR pszRecoveryFileName)
 {
-  WCHAR szRecoveryFilePath[MAX_PATH] = L"C:\\temp\\gatto\\";
-  wcscat(szRecoveryFilePath, pszRecoveryFileName);
+  WCHAR szRecoveryFilePath[MAX_PATH];
+  wcscpy(szRecoveryFilePath, szRecoveryDirectory);
+  PathAppend(szRecoveryFilePath, pszRecoveryFileName);
   BOOL bResult = FALSE;
   HANDLE hFile = CreateFile(szRecoveryFilePath,
     GENERIC_READ,
@@ -7071,6 +7088,7 @@ BOOL SaveRecoveryFile()
   }
   else
   {
+    SHCreateDirectoryEx(NULL, szRecoveryDirectory, NULL);
     return FileIO(FALSE, szRecoveryFile, FALSE, &encoding, &eol, NULL, NULL, &cancelDataLoss, TRUE, TRUE);
   }
   
