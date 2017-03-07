@@ -1187,7 +1187,8 @@ BOOL EditLoadFile(
        int* iEncoding,
        int* iEOLMode,
        BOOL *pbUnicodeErr,
-       BOOL *pbFileTooBig)
+       BOOL *pbFileTooBig,
+       BOOL bRecovery)
 {
 
   HANDLE hFile;
@@ -1242,6 +1243,18 @@ BOOL EditLoadFile(
   }
 
   lpData = GlobalAlloc(GPTR,dwBufSize);
+
+  if (bRecovery)
+  {
+    WCHAR dummy[MAX_PATH + 40];
+    DWORD magic;
+    DWORD nameLength;
+    ReadFile(hFile, &magic, 4, NULL, NULL);
+    if (magic != RECOVERY_FILE_MAGIC_NUMBER) return FALSE;
+    ReadFile(hFile, &nameLength, 4, NULL, NULL);
+    ReadFile(hFile, &dummy, nameLength * 2 + 2, NULL, NULL);
+  }
+
   bReadSuccess = ReadFile(hFile,lpData,(DWORD)GlobalSize(lpData)-2,&cbData,NULL);
   dwLastIOError = GetLastError();
   CloseHandle(hFile);
@@ -1435,7 +1448,10 @@ BOOL EditSaveFile(
        LPCWSTR pszFile,
        int iEncoding,
        BOOL *pbCancelDataLoss,
-       BOOL bSaveCopy)
+       BOOL bSaveCopy,
+       BOOL bRecovery,
+       LPCWSTR pszPrefix
+  )
 {
 
   HANDLE hFile;
@@ -1477,14 +1493,23 @@ BOOL EditSaveFile(
   if (hFile == INVALID_HANDLE_VALUE)
     return FALSE;
 
+  if (pszPrefix != NULL) {
+    DWORD magic = RECOVERY_FILE_MAGIC_NUMBER;
+    DWORD prefixLength = wcslen(pszPrefix);
+    WriteFile(hFile, &magic, 4, &dwBytesWritten, NULL);
+    WriteFile(hFile, &prefixLength, 4, &dwBytesWritten, NULL);
+    WriteFile(hFile, (byte*)pszPrefix, (prefixLength + 1) * 2, &dwBytesWritten, NULL);
+  }
+
+
   // ensure consistent line endings
-  if (bFixLineEndings) {
+  if (bFixLineEndings && !bRecovery) {
     SendMessage(hwnd,SCI_CONVERTEOLS,SendMessage(hwnd,SCI_GETEOLMODE,0,0),0);
     EditFixPositions(hwnd);
   }
 
   // strip trailing blanks
-  if (bAutoStripBlanks)
+  if (bAutoStripBlanks && !bRecovery)
     EditStripTrailingBlanks(hwnd,TRUE);
 
   // get text
@@ -1616,8 +1641,9 @@ BOOL EditSaveFile(
   if (bWriteSuccess)
   {
     if (!bSaveCopy)
+    {
       SendMessage(hwnd,SCI_SETSAVEPOINT,0,0);
-
+    }
     return TRUE;
   }
 

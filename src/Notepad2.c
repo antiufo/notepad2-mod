@@ -58,6 +58,7 @@ HWND      hDlgFindReplace = NULL;
 #define NUMTOOLBITMAPS  25
 #define NUMINITIALTOOLS 24
 #define MARGIN_FOLD_INDEX 2
+#define FILE_RECOVERY_INTERVAL 1500
 
 TBBUTTON  tbbMainWnd[] = { {0,IDT_FILE_NEW,TBSTATE_ENABLED,TBSTYLE_BUTTON,0,0},
                            {1,IDT_FILE_OPEN,TBSTATE_ENABLED,TBSTYLE_BUTTON,0,0},
@@ -214,8 +215,13 @@ LPMRULIST  mruReplace;
 
 DWORD     dwLastIOError;
 WCHAR      szCurFile[MAX_PATH+40];
+WCHAR      szRecoveryFile[MAX_PATH+50];
+BOOL       bNotARealSavePoint = FALSE;
 FILEVARS   fvCurFile;
 BOOL      bModified;
+BOOL      bModifiedSinceLastRecoverySave;
+BOOL      bIgnoreNextChangeNotificationForRecovery;
+UINT_PTR  pFileRecoveryTimer = NULL;
 BOOL      bReadOnly = FALSE;
 int       iEncoding;
 int       iOriginalEncoding;
@@ -1121,13 +1127,13 @@ LRESULT CALLBACK MainWndProc(HWND hwnd,UINT umsg,WPARAM wParam,LPARAM lParam)
 
 
     case WM_CLOSE:
-      if (FileSave(FALSE,TRUE,FALSE,FALSE))
+      if (FileSaveEx(FALSE,TRUE,FALSE,FALSE,TRUE))
         DestroyWindow(hwnd);
       break;
 
 
     case WM_QUERYENDSESSION:
-      if (FileSave(FALSE,TRUE,FALSE,FALSE))
+      if (FileSaveEx(FALSE,TRUE,FALSE,FALSE,TRUE))
         return TRUE;
       else
         return FALSE;
@@ -3661,9 +3667,9 @@ LRESULT MsgCommand(HWND hwnd,WPARAM wParam,LPARAM lParam)
         }
         else
         {
-            // define (behöver bara göra detta en gång egentligen)
-            //SendMessage( hwndEdit , SCI_MARKERSETBACK , 0 , 74 | (203 << 8) | (0 << 16) ); //behöver bara göra detta en gång egentligen
-            //SendMessage( hwndEdit , SCI_MARKERDEFINE , 0 , SC_MARK_ARROWS );    //behöver bara göra detta en gång egentligen
+           // define (behöver bara göra detta en gång egentligen)
+           //SendMessage( hwndEdit , SCI_MARKERSETBACK , 0 , 74 | (203 << 8) | (0 << 16) ); //behöver bara göra detta en gång egentligen
+           //SendMessage( hwndEdit , SCI_MARKERDEFINE , 0 , SC_MARK_ARROWS );    //behöver bara göra detta en gång egentligen
 
             if( bShowSelectionMargin )
             {
@@ -5310,12 +5316,20 @@ LRESULT MsgNotify(HWND hwnd,WPARAM wParam,LPARAM lParam)
           break;
 
         case SCN_MODIFIED:
+          if (bIgnoreNextChangeNotificationForRecovery) {
+            bIgnoreNextChangeNotificationForRecovery = FALSE;
+            bModifiedSinceLastRecoverySave = TRUE;
+            StartFileRecoveryTimer();
+          }
+          // Fall throuh
         case SCN_ZOOM:
           UpdateLineNumberWidth();
           break;
 
         case SCN_SAVEPOINTREACHED:
+          if (bNotARealSavePoint) break;
           bModified = FALSE;
+          StopFileRecoveryTimer(TRUE);
           SetWindowTitle(hwnd,uidsAppTitle,fIsElevated,IDS_UNTITLED,szCurFile,
             iPathNameFormat,bModified || iEncoding != iOriginalEncoding,
             IDS_READONLY,bReadOnly,szTitleExcerpt);
@@ -5333,6 +5347,8 @@ LRESULT MsgNotify(HWND hwnd,WPARAM wParam,LPARAM lParam)
 
         case SCN_SAVEPOINTLEFT:
           bModified = TRUE;
+          bModifiedSinceLastRecoverySave = TRUE;
+          StartFileRecoveryTimer();
           SetWindowTitle(hwnd,uidsAppTitle,fIsElevated,IDS_UNTITLED,szCurFile,
             iPathNameFormat,bModified || iEncoding != iOriginalEncoding,
             IDS_READONLY,bReadOnly,szTitleExcerpt);
@@ -6790,7 +6806,7 @@ void UpdateLineNumberWidth()
 //
 BOOL FileIO(BOOL fLoad,LPCWSTR psz,BOOL bNoEncDetect,int *ienc,int *ieol,
             BOOL *pbUnicodeErr,BOOL *pbFileTooBig,
-            BOOL *pbCancelDataLoss,BOOL bSaveCopy)
+            BOOL *pbCancelDataLoss,BOOL bSaveCopy,BOOL bRecovery)
 {
   WCHAR tch[MAX_PATH+40];
   BOOL fSuccess;
@@ -6807,18 +6823,122 @@ BOOL FileIO(BOOL fLoad,LPCWSTR psz,BOOL bNoEncDetect,int *ienc,int *ieol,
   UpdateWindow(hwndStatus);
 
   if (fLoad)
-    fSuccess = EditLoadFile(hwndEdit,psz,bNoEncDetect,ienc,ieol,pbUnicodeErr,pbFileTooBig);
+    fSuccess = EditLoadFile(hwndEdit,psz,bNoEncDetect,ienc,ieol,pbUnicodeErr,pbFileTooBig,bRecovery);
   else
-    fSuccess = EditSaveFile(hwndEdit,psz,*ienc,pbCancelDataLoss,bSaveCopy);
+    fSuccess = EditSaveFile(hwndEdit,psz,*ienc,pbCancelDataLoss,bSaveCopy,bRecovery,bRecovery ? szCurFile : NULL);
 
-  dwFileAttributes = GetFileAttributes(psz);
-  bReadOnly = (dwFileAttributes != INVALID_FILE_ATTRIBUTES && dwFileAttributes & FILE_ATTRIBUTE_READONLY);
+  if (!bRecovery) {
+    dwFileAttributes = GetFileAttributes(psz);
+    bReadOnly = (dwFileAttributes != INVALID_FILE_ATTRIBUTES && dwFileAttributes & FILE_ATTRIBUTE_READONLY);
 
+    if (fSuccess && !fLoad)
+    {
+      bNotARealSavePoint = FALSE;
+    }
+  }
   StatusSetSimple(hwndStatus,FALSE);
 
   EndWaitCursor();
 
   return(fSuccess);
+}
+
+unsigned long HashBytes(BYTE *data, int length)
+{
+  unsigned long hash = 5381;
+
+  for (size_t i = 0; i < length; i++)
+  {
+    int c = data[i];
+    hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+  }
+
+  return hash;
+}
+
+void InitRecoveryFilePath(PWCHAR originalFile, PWCHAR dest)
+{
+  wcscpy(dest, L"C:\\temp\\gatto");
+  wcscat(dest, L"\\");
+
+  
+  if (wcslen(originalFile) == 0)
+  {
+    wcscat(dest, L"Untitled--");
+    SYSTEMTIME time;
+    GetSystemTime(&time);
+    GetDateFormat(LOCALE_INVARIANT, 0, &time, L"yyyy-MM-dd--", dest + wcslen(dest), 256);
+    GetTimeFormat(LOCALE_INVARIANT, 0, &time, L"hh-mm-ss--", dest + wcslen(dest), 256);
+    srand((UINT)GetTickCount());
+    int r = abs(rand());
+    wsprintf(dest + wcslen(dest), L"%d", r);
+    wcscat(dest, L".txt.dat");
+  }
+  else
+  {
+    PWCHAR lastBackslash = wcsrchr(originalFile, '\\');
+    if (lastBackslash != NULL)
+    {
+      WCHAR buffer[MAX_PATH + 40];
+      wcscpy(buffer, originalFile);
+      wcsupr(buffer);
+
+      unsigned long hash1 = HashBytes(((byte*)buffer) + 0, wcslen(buffer) * 2 + 0);
+      unsigned long hash2 = HashBytes(((byte*)buffer) + 1, wcslen(buffer) * 2 - 1);
+
+      wsprintf(dest + wcslen(dest), L"%hu%hu--", hash1, hash2);;
+      wcscat(dest, lastBackslash + 1);
+      wcscat(dest, L".dat");
+    }
+    else
+    {
+      wcscat(dest, L"wat");
+    }
+  }
+  
+
+  
+
+}
+
+
+BOOL SaveRecoveryFile()
+{
+  bModifiedSinceLastRecoverySave = FALSE;
+
+  int encoding = iEncoding;
+  int eol = iEOLMode;
+  BOOL cancelDataLoss = FALSE;
+
+  return FileIO(FALSE, szRecoveryFile, FALSE, &encoding, &eol, NULL, NULL, &cancelDataLoss, TRUE, TRUE);
+  
+}
+
+
+
+void CALLBACK FileRecoveryTimerCallback(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
+{
+  StopFileRecoveryTimer(FALSE);
+  SaveRecoveryFile();
+  pFileRecoveryTimer = NULL;
+}
+
+void StartFileRecoveryTimer() {
+  if (pFileRecoveryTimer != NULL) return;
+  pFileRecoveryTimer = SetTimer(hwndMain, ID_FILERECOVERYTIMER, FILE_RECOVERY_INTERVAL, FileRecoveryTimerCallback);
+}
+
+
+void StopFileRecoveryTimer(BOOL deleteRecoveryFile) {
+  bModifiedSinceLastRecoverySave = FALSE;
+  if (deleteRecoveryFile && wcslen(szRecoveryFile) != 0) {
+    DeleteFile(szRecoveryFile);
+  }
+  if (pFileRecoveryTimer != NULL)
+  {
+    KillTimer(hwndMain, pFileRecoveryTimer);
+    pFileRecoveryTimer = NULL;
+  }
 }
 
 
@@ -6841,8 +6961,12 @@ BOOL FileLoad(BOOL bDontSave,BOOL bNew,BOOL bReload,BOOL bNoEncDetect,LPCWSTR lp
       return FALSE;
   }
 
+  StopFileRecoveryTimer(TRUE);
+
   if (bNew) {
     lstrcpy(szCurFile,L"");
+    InitRecoveryFilePath(szCurFile, szRecoveryFile);
+    bNotARealSavePoint = FALSE;
     SetDlgItemText(hwndMain,IDC_FILENAME,szCurFile);
     SetDlgItemInt(hwndMain,IDC_REUSELOCK,GetTickCount(),FALSE);
     if (!fKeepTitleExcerpt)
@@ -6900,6 +7024,8 @@ BOOL FileLoad(BOOL bDontSave,BOOL bNew,BOOL bReload,BOOL bNoEncDetect,LPCWSTR lp
   if (PathIsLnkFile(szFileName))
     PathGetLnkPath(szFileName,szFileName,COUNTOF(szFileName));
 
+  BOOL usedRecoveryInfo = FALSE;
+
   // Ask to create a new file...
   if (!bReload && !PathFileExists(szFileName))
   {
@@ -6933,10 +7059,28 @@ BOOL FileLoad(BOOL bDontSave,BOOL bNew,BOOL bReload,BOOL bNoEncDetect,LPCWSTR lp
   }
 
   else
-    fSuccess = FileIO(TRUE,szFileName,bNoEncDetect,&iEncoding,&iEOLMode,&bUnicodeErr,&bFileTooBig,NULL,FALSE);
+  {
+    WCHAR szRecoveryFileToReadFrom[MAX_PATH + 40] = L"";
+    InitRecoveryFilePath(szFileName, szRecoveryFileToReadFrom);
+    usedRecoveryInfo = GetFileAttributes(szRecoveryFileToReadFrom) != INVALID_FILE_ATTRIBUTES;
+    fSuccess = FileIO(TRUE, usedRecoveryInfo ? szRecoveryFileToReadFrom : szFileName, bNoEncDetect, &iEncoding, &iEOLMode, &bUnicodeErr, &bFileTooBig, NULL, FALSE, usedRecoveryInfo);
+    if (fSuccess) 
+    {
+      if (usedRecoveryInfo) {
+        bNotARealSavePoint = TRUE;
+        DWORD dwFileAttributes = GetFileAttributes(szFileName);
+        bReadOnly = (dwFileAttributes != INVALID_FILE_ATTRIBUTES && dwFileAttributes & FILE_ATTRIBUTE_READONLY);
+      }
+      else 
+      {
+        bNotARealSavePoint = FALSE;
+      }
+    }
+  }
 
   if (fSuccess) {
     lstrcpy(szCurFile,szFileName);
+    InitRecoveryFilePath(szCurFile,szRecoveryFile);
     SetDlgItemText(hwndMain,IDC_FILENAME,szCurFile);
     SetDlgItemInt(hwndMain,IDC_REUSELOCK,GetTickCount(),FALSE);
     if (!fKeepTitleExcerpt)
@@ -6945,7 +7089,7 @@ BOOL FileLoad(BOOL bDontSave,BOOL bNew,BOOL bReload,BOOL bNoEncDetect,LPCWSTR lp
       Style_SetLexerFromFile(hwndEdit,szCurFile);
     UpdateLineNumberWidth();
     iOriginalEncoding = iEncoding;
-    bModified = FALSE;
+    bModified = usedRecoveryInfo;
     //bReadOnly = FALSE;
     SendMessage(hwndEdit,SCI_SETEOLMODE,iEOLMode,0);
     MRU_AddFile(pFileMRU,szFileName,flagRelativeFileMRU,flagPortableMyDocs);
@@ -6985,6 +7129,8 @@ BOOL FileLoad(BOOL bDontSave,BOOL bNew,BOOL bReload,BOOL bNoEncDetect,LPCWSTR lp
   else if (!bFileTooBig)
     MsgBox(MBWARN,IDS_ERR_LOADFILE,szFileName);
 
+  if (fSuccess && bReload) bIgnoreNextChangeNotificationForRecovery = TRUE;
+
   return(fSuccess);
 }
 
@@ -6994,7 +7140,12 @@ BOOL FileLoad(BOOL bDontSave,BOOL bNew,BOOL bReload,BOOL bNoEncDetect,LPCWSTR lp
 //  FileSave()
 //
 //
-BOOL FileSave(BOOL bSaveAlways,BOOL bAsk,BOOL bSaveAs,BOOL bSaveCopy)
+
+BOOL FileSave(BOOL bSaveAlways, BOOL bAsk, BOOL bSaveAs, BOOL bSaveCopy)
+{
+  return FileSaveEx(bSaveAlways, bAsk, bSaveAs, bSaveCopy, FALSE);
+}
+BOOL FileSaveEx(BOOL bSaveAlways,BOOL bAsk,BOOL bSaveAs,BOOL bSaveCopy,BOOL bAllowSaveToRecovery)
 {
   WCHAR tchFile[MAX_PATH];
   BOOL fSuccess = FALSE;
@@ -7019,6 +7170,10 @@ BOOL FileSave(BOOL bSaveAlways,BOOL bAsk,BOOL bSaveAs,BOOL bSaveCopy)
 
   if (bAsk)
   {
+    if (bAllowSaveToRecovery)
+    {
+      return SaveRecoveryFile();
+    }
     // File or "Untitled" ...
     WCHAR tch[MAX_PATH];
     if (lstrlen(szCurFile))
@@ -7065,11 +7220,12 @@ BOOL FileSave(BOOL bSaveAlways,BOOL bAsk,BOOL bSaveAs,BOOL bSaveCopy)
 
     if (SaveFileDlg(hwndMain,tchFile,COUNTOF(tchFile),tchInitialDir))
     {
-      if (fSuccess = FileIO(FALSE,tchFile,FALSE,&iEncoding,&iEOLMode,NULL,NULL,&bCancelDataLoss,bSaveCopy))
+      if (fSuccess = FileIO(FALSE,tchFile,FALSE,&iEncoding,&iEOLMode,NULL,NULL,&bCancelDataLoss,bSaveCopy,FALSE))
       {
         if (!bSaveCopy)
         {
           lstrcpy(szCurFile,tchFile);
+          InitRecoveryFilePath(szCurFile, szRecoveryFile);
           SetDlgItemText(hwndMain,IDC_FILENAME,szCurFile);
           SetDlgItemInt(hwndMain,IDC_REUSELOCK,GetTickCount(),FALSE);
           if (!fKeepTitleExcerpt)
@@ -7089,7 +7245,7 @@ BOOL FileSave(BOOL bSaveAlways,BOOL bAsk,BOOL bSaveAs,BOOL bSaveCopy)
   }
 
   else
-    fSuccess = FileIO(FALSE,szCurFile,FALSE,&iEncoding,&iEOLMode,NULL,NULL,&bCancelDataLoss,FALSE);
+    fSuccess = FileIO(FALSE,szCurFile,FALSE,&iEncoding,&iEOLMode,NULL,NULL,&bCancelDataLoss,FALSE,FALSE);
 
   if (fSuccess)
   {
@@ -7103,6 +7259,7 @@ BOOL FileSave(BOOL bSaveAlways,BOOL bAsk,BOOL bSaveAs,BOOL bSaveCopy)
       SetWindowTitle(hwndMain,uidsAppTitle,fIsElevated,IDS_UNTITLED,szCurFile,
         iPathNameFormat,bModified || iEncoding != iOriginalEncoding,
         IDS_READONLY,bReadOnly,szTitleExcerpt);
+        StopFileRecoveryTimer(TRUE);
 
       // Install watching of the current file
       if (bSaveAs && bResetFileWatching)

@@ -90,10 +90,16 @@ typedef struct np2params {
 //==== Paste Board Timer ======================================================
 #define ID_PASTEBOARDTIMER 0xA001
 
+//==== File Recovery Timer ======================================================
+#define ID_FILERECOVERYTIMER 0xA002
 
 //==== Reuse Window Lock Timeout ==============================================
 #define REUSEWINDOWLOCKTIMEOUT 1000
 
+
+
+
+#define RECOVERY_FILE_MAGIC_NUMBER 0x54832144
 
 //==== Function Declarations ==================================================
 BOOL InitApplication(HINSTANCE);
@@ -126,9 +132,10 @@ void UpdateToolbar();
 void UpdateLineNumberWidth();
 
 
-BOOL FileIO(BOOL,LPCWSTR,BOOL,int*,int*,BOOL*,BOOL*,BOOL*,BOOL);
+BOOL FileIO(BOOL,LPCWSTR,BOOL,int*,int*,BOOL*,BOOL*,BOOL*,BOOL,BOOL);
 BOOL FileLoad(BOOL,BOOL,BOOL,BOOL,LPCWSTR);
 BOOL FileSave(BOOL,BOOL,BOOL,BOOL);
+BOOL FileSaveEx(BOOL,BOOL,BOOL,BOOL,BOOL);
 BOOL OpenFileDlg(HWND,LPWSTR,int,LPCWSTR);
 BOOL SaveFileDlg(HWND,LPWSTR,int,LPCWSTR);
 
@@ -142,6 +149,10 @@ void    MsgInitMenu(HWND,WPARAM,LPARAM);
 LRESULT MsgCommand(HWND,WPARAM,LPARAM);
 LRESULT MsgNotify(HWND,WPARAM,LPARAM);
 
+BOOL SaveRecoveryFile();
+void CALLBACK FileRecoveryTimerCallback(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime);
+void StartFileRecoveryTimer();
+void StopFileRecoveryTimer(BOOL deleteRecoveryFile);
 
 
 ///   End of Notepad2.h   \\\
