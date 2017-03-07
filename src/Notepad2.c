@@ -2091,6 +2091,11 @@ int iRecoveryMenuItemsCount = 0;
 
 void PopulateRecoveredFilesMenu(HMENU menu)
 {
+  if (wcslen(szCurFile) == 0 && wcslen(szRecoveryFile) != 0 && (int)SendMessage(hwndEdit, SCI_GETLENGTH, 0, 0) == 0)
+  {
+    // If the current untitled, recovered file has been emptied, remove it immediately from the list.
+    SaveRecoveryFile();
+  }
   for (size_t i = 0; i < iRecoveryMenuItemsCount; i++)
   {
     free(pRecoveryMenuItems[i]);
@@ -5403,6 +5408,7 @@ LRESULT MsgNotify(HWND hwnd,WPARAM wParam,LPARAM lParam)
         case SCN_MODIFIED:
           if (bIgnoreNextChangeNotificationForRecovery) {
             bIgnoreNextChangeNotificationForRecovery = FALSE;
+          }else{
             bModifiedSinceLastRecoverySave = TRUE;
             StartFileRecoveryTimer();
           }
@@ -7034,7 +7040,15 @@ BOOL SaveRecoveryFile()
   int eol = iEOLMode;
   BOOL cancelDataLoss = FALSE;
 
-  return FileIO(FALSE, szRecoveryFile, FALSE, &encoding, &eol, NULL, NULL, &cancelDataLoss, TRUE, TRUE);
+  if (wcslen(szCurFile) == 0 && (int)SendMessage(hwndEdit,SCI_GETLENGTH,0,0) == 0)
+  {
+    StopFileRecoveryTimer(TRUE);
+    return TRUE;
+  }
+  else
+  {
+    return FileIO(FALSE, szRecoveryFile, FALSE, &encoding, &eol, NULL, NULL, &cancelDataLoss, TRUE, TRUE);
+  }
   
 }
 
@@ -7315,8 +7329,10 @@ BOOL FileSaveEx(BOOL bSaveAlways,BOOL bAsk,BOOL bSaveAs,BOOL bSaveCopy,BOOL bAll
     }
   }
 
-  if (!bSaveAlways && (!bModified && iEncoding == iOriginalEncoding || bIsEmptyNewFile) && !bSaveAs)
+  if (!bSaveAlways && (!bModified && iEncoding == iOriginalEncoding || bIsEmptyNewFile) && !bSaveAs) {
+    SaveRecoveryFile(); // Deletes the current empty recovery file
     return TRUE;
+  }
 
   if (bAsk)
   {
