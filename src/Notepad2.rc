@@ -119,6 +119,10 @@ BEGIN
             MENUITEM "&Manage...\tAlt+F9",          IDM_FILE_MANAGEFAV
         END
         MENUITEM "Recent (&History)...\tAlt+H", IDM_FILE_RECENT
+        POPUP "&Recovered"
+        BEGIN
+            MENUITEM "(Dummy)", IDM_FILE_RECOVERED
+        END
         MENUITEM SEPARATOR
         MENUITEM "E&xit\tAlt+F4",               IDM_FILE_EXIT
     END

@@ -1377,6 +1377,11 @@ LRESULT CALLBACK MainWndProc(HWND hwnd,UINT umsg,WPARAM wParam,LPARAM lParam)
       MsgInitMenu(hwnd,wParam,lParam);
       break;
 
+    case WM_INITMENUPOPUP:
+      if (GetMenuItemID(wParam, 0) == IDM_FILE_RECOVERED) {
+        PopulateRecoveredFilesMenu((HMENU)wParam);
+      }
+      break;
 
     case WM_NOTIFY:
       return MsgNotify(hwnd,wParam,lParam);
@@ -2047,6 +2052,80 @@ void MsgSize(HWND hwnd,WPARAM wParam,LPARAM lParam)
 
 }
 
+#define MAX_RECOVERY_MENU_ITEMS 50
+
+
+BOOL GetDisplayNameForRecoveryFile(PWCHAR destination, PWCHAR name)
+{
+  if (isdigit(name[0]))
+  {
+    // Eg. 36275755171385521050--gatto.txt.dat
+    PWCHAR idx = wcschr(name, '-');
+    if (idx == NULL || *(idx + 1) != '-') return FALSE;
+    wcscpy(destination, idx + 2);
+    destination[wcslen(destination) - 4] = 0;
+    return TRUE;
+  }
+  else
+  {
+    // Eg. Untitled--2017-03-07--05-44-26--10452.txt.dat
+    if (wcslen(name) <= 32) return FALSE;
+
+    wcscpy(destination, L"Untitled (");
+    wcscat(destination, name + 10);
+    wcscpy(destination + 21, name + 22);
+    destination[20] = ' ';
+    destination[23] = ':';
+    destination[26] = ')';
+    destination[27] = 0;
+    return TRUE;
+  }
+
+  
+
+  return TRUE;
+}
+
+PWCHAR pRecoveryMenuItems[MAX_RECOVERY_MENU_ITEMS];
+int iRecoveryMenuItemsCount = 0;
+
+void PopulateRecoveredFilesMenu(HMENU menu)
+{
+  for (size_t i = 0; i < iRecoveryMenuItemsCount; i++)
+  {
+    free(pRecoveryMenuItems[i]);
+    RemoveMenu(menu, 0, MF_BYPOSITION);
+  }
+
+  RemoveMenu(menu, 0, MF_BYPOSITION); // Delete dummy entry
+
+  WIN32_FIND_DATA findData;
+  iRecoveryMenuItemsCount = 0;
+  HANDLE hFind = FindFirstFile(L"C:\\temp\\gatto\\*.dat", &findData);
+  if (hFind != -1)
+  {
+    WCHAR szDisplayName[MAX_PATH];
+    while (TRUE)
+    {
+      
+      
+      if (GetDisplayNameForRecoveryFile(szDisplayName, findData.cFileName))
+      {
+        PWCHAR szCopiedName = (PWCHAR)malloc(MAX_PATH);
+        wcscpy(szCopiedName, findData.cFileName);
+        pRecoveryMenuItems[iRecoveryMenuItemsCount] = szCopiedName;
+
+        AppendMenu(menu, MF_STRING | MF_ENABLED, IDM_FILE_RECOVERED + iRecoveryMenuItemsCount, szDisplayName);
+        iRecoveryMenuItemsCount++;
+      }
+      if (!FindNextFile(hFind, &findData)) break;
+    }
+  }
+  
+  if(iRecoveryMenuItemsCount == 0)
+    AppendMenu(menu, MF_STRING | MF_DISABLED, IDM_FILE_RECOVERED, L"(Empty)");
+  
+}
 
 //=============================================================================
 //
@@ -5078,6 +5157,11 @@ LRESULT MsgCommand(HWND hwnd,WPARAM wParam,LPARAM lParam)
         MessageBeep(0);
       break;
 
+    default:
+      if (LOWORD(wParam) >= IDM_FILE_RECOVERED && LOWORD(wParam) <= IDM_FILE_RECOVERED_MAX)
+      {
+        LoadRecoveryFile(pRecoveryMenuItems[LOWORD(wParam) - IDM_FILE_RECOVERED]);
+      }
   }
 
   return(0);
@@ -6905,6 +6989,43 @@ void InitRecoveryFilePath(PWCHAR originalFile, PWCHAR dest)
 }
 
 
+BOOL LoadRecoveryFile(PWCHAR pszRecoveryFileName)
+{
+  WCHAR szRecoveryFilePath[MAX_PATH] = L"C:\\temp\\gatto\\";
+  wcscat(szRecoveryFilePath, pszRecoveryFileName);
+  BOOL bResult = FALSE;
+  HANDLE hFile = CreateFile(szRecoveryFilePath,
+    GENERIC_READ,
+    FILE_SHARE_READ | FILE_SHARE_WRITE,
+    NULL,
+    OPEN_EXISTING,
+    FILE_ATTRIBUTE_NORMAL,
+    NULL);
+  if (hFile == INVALID_HANDLE_VALUE) return bResult;
+  DWORD magic;
+  DWORD pathLength;
+  if (!ReadFile(hFile, &magic, 4, NULL, NULL)) goto cleanup;
+  if (magic != RECOVERY_FILE_MAGIC_NUMBER) goto cleanup;
+  if (!ReadFile(hFile, &pathLength, 4, NULL, NULL)) goto cleanup;
+  WCHAR szOriginalPath[MAX_PATH];
+  if (!ReadFile(hFile, &szOriginalPath, (pathLength + 1) * 2, NULL, NULL)) goto cleanup;
+
+  if (wcslen(szOriginalPath) != 0)
+  {
+    if (wcsicmp(szOriginalPath, szCurFile) == 0) goto cleanup;
+  }
+  else
+  {
+    if (wcsicmp(szRecoveryFilePath, szRecoveryFile) == 0) goto cleanup;
+  }
+
+  if (!FileLoadEx(FALSE, FALSE, FALSE, FALSE, szOriginalPath, szRecoveryFilePath, TRUE)) goto cleanup;
+  bResult = TRUE;
+cleanup:
+  CloseHandle(hFile);
+  return bResult;
+}
+
 BOOL SaveRecoveryFile()
 {
   bModifiedSinceLastRecoverySave = FALSE;
@@ -6950,18 +7071,24 @@ void StopFileRecoveryTimer(BOOL deleteRecoveryFile) {
 //  FileLoad()
 //
 //
-BOOL FileLoad(BOOL bDontSave,BOOL bNew,BOOL bReload,BOOL bNoEncDetect,LPCWSTR lpszFile)
+BOOL FileLoad(BOOL bDontSave, BOOL bNew, BOOL bReload, BOOL bNoEncDetect, LPCWSTR lpszFile)
+{
+  return FileLoadEx(bDontSave,bNew,bReload,bNoEncDetect,lpszFile,NULL,FALSE);
+}
+BOOL FileLoadEx(BOOL bDontSave,BOOL bNew,BOOL bReload,BOOL bNoEncDetect,LPCWSTR lpszFile,LPCWSTR lpszRecoveryPath,BOOL bAllowSaveToRecovery)
 {
   WCHAR tch[MAX_PATH] = L"";
   WCHAR szFileName[MAX_PATH] = L"";
   BOOL fSuccess;
   BOOL bUnicodeErr = FALSE;
   BOOL bFileTooBig = FALSE;
+  BOOL bIsRecoveredUntitledFile = wcslen(lpszFile) == 0 && lpszRecoveryPath != NULL;
 
   if (!bDontSave)
   {
-    if (!FileSave(FALSE,TRUE,FALSE,FALSE))
+    if (!FileSaveEx(FALSE,TRUE,FALSE,FALSE,bAllowSaveToRecovery))
       return FALSE;
+    wcscpy(szRecoveryFile, L"");
   }
 
   StopFileRecoveryTimer(TRUE);
@@ -6998,7 +7125,7 @@ BOOL FileLoad(BOOL bDontSave,BOOL bNew,BOOL bReload,BOOL bNoEncDetect,LPCWSTR lp
     return TRUE;
   }
 
-  if (!lpszFile || lstrlen(lpszFile) == 0) {
+  if ((!lpszFile || lstrlen(lpszFile) == 0) && lpszRecoveryPath == NULL) {
     if (!OpenFileDlg(hwndMain,tch,COUNTOF(tch),NULL))
       return FALSE;
   }
@@ -7008,7 +7135,7 @@ BOOL FileLoad(BOOL bDontSave,BOOL bNew,BOOL bReload,BOOL bNoEncDetect,LPCWSTR lp
 
   ExpandEnvironmentStringsEx(tch,COUNTOF(tch));
 
-  if (PathIsRelative(tch)) {
+  if (PathIsRelative(tch) && !bIsRecoveredUntitledFile) {
     StrCpyN(szFileName,g_wchWorkingDirectory,COUNTOF(szFileName));
     PathAppend(szFileName,tch);
     if (!PathFileExists(szFileName)) {
@@ -7021,16 +7148,18 @@ BOOL FileLoad(BOOL bDontSave,BOOL bNew,BOOL bReload,BOOL bNoEncDetect,LPCWSTR lp
   else
     lstrcpy(szFileName,tch);
 
-  PathCanonicalizeEx(szFileName);
-  GetLongPathNameEx(szFileName,COUNTOF(szFileName));
+  if (!bIsRecoveredUntitledFile) {
+    PathCanonicalizeEx(szFileName);
+    GetLongPathNameEx(szFileName, COUNTOF(szFileName));
 
-  if (PathIsLnkFile(szFileName))
-    PathGetLnkPath(szFileName,szFileName,COUNTOF(szFileName));
+    if (PathIsLnkFile(szFileName))
+      PathGetLnkPath(szFileName, szFileName, COUNTOF(szFileName));
+  }
 
   BOOL usedRecoveryInfo = FALSE;
 
   // Ask to create a new file...
-  if (!bReload && !PathFileExists(szFileName))
+  if (!bReload && !PathFileExists(szFileName) && lpszRecoveryPath == NULL)
   {
     if (flagQuietCreate || MsgBox(MBYESNO,IDS_ASK_CREATE,szFileName) == IDYES) {
       HANDLE hFile = CreateFile(szFileName,
@@ -7064,15 +7193,30 @@ BOOL FileLoad(BOOL bDontSave,BOOL bNew,BOOL bReload,BOOL bNoEncDetect,LPCWSTR lp
   else
   {
     WCHAR szRecoveryFileToReadFrom[MAX_PATH + 40] = L"";
-    InitRecoveryFilePath(szFileName, szRecoveryFileToReadFrom);
-    usedRecoveryInfo = GetFileAttributes(szRecoveryFileToReadFrom) != INVALID_FILE_ATTRIBUTES;
+    if (bIsRecoveredUntitledFile)
+    {
+      wcscpy(szRecoveryFileToReadFrom, lpszRecoveryPath);
+      usedRecoveryInfo = TRUE;
+    }
+    else 
+    {
+      InitRecoveryFilePath(szFileName, szRecoveryFileToReadFrom);
+      usedRecoveryInfo = GetFileAttributes(szRecoveryFileToReadFrom) != INVALID_FILE_ATTRIBUTES;
+    }
     fSuccess = FileIO(TRUE, usedRecoveryInfo ? szRecoveryFileToReadFrom : szFileName, bNoEncDetect, &iEncoding, &iEOLMode, &bUnicodeErr, &bFileTooBig, NULL, FALSE, usedRecoveryInfo);
     if (fSuccess) 
     {
       if (usedRecoveryInfo) {
         bNotARealSavePoint = TRUE;
-        DWORD dwFileAttributes = GetFileAttributes(szFileName);
-        bReadOnly = (dwFileAttributes != INVALID_FILE_ATTRIBUTES && dwFileAttributes & FILE_ATTRIBUTE_READONLY);
+        if (bIsRecoveredUntitledFile)
+        {
+          bReadOnly = FALSE;
+        }
+        else
+        {
+          DWORD dwFileAttributes = GetFileAttributes(szFileName);
+          bReadOnly = (dwFileAttributes != INVALID_FILE_ATTRIBUTES && dwFileAttributes & FILE_ATTRIBUTE_READONLY);
+        }
       }
       else 
       {
@@ -7083,7 +7227,8 @@ BOOL FileLoad(BOOL bDontSave,BOOL bNew,BOOL bReload,BOOL bNoEncDetect,LPCWSTR lp
 
   if (fSuccess) {
     lstrcpy(szCurFile,szFileName);
-    InitRecoveryFilePath(szCurFile,szRecoveryFile);
+    if (lpszRecoveryPath != NULL) wcscpy(szRecoveryFile, lpszRecoveryPath);
+    else InitRecoveryFilePath(szCurFile,szRecoveryFile);
     SetDlgItemText(hwndMain,IDC_FILENAME,szCurFile);
     SetDlgItemInt(hwndMain,IDC_REUSELOCK,GetTickCount(),FALSE);
     if (!fKeepTitleExcerpt)
@@ -7153,6 +7298,8 @@ BOOL FileSaveEx(BOOL bSaveAlways,BOOL bAsk,BOOL bSaveAs,BOOL bSaveCopy,BOOL bAll
   WCHAR tchFile[MAX_PATH];
   BOOL fSuccess = FALSE;
   BOOL bCancelDataLoss = FALSE;
+
+  if (bIsRecovered) bAllowSaveToRecovery = TRUE;
 
   BOOL bIsEmptyNewFile = FALSE;
   if (lstrlen(szCurFile) == 0) {
@@ -7228,6 +7375,7 @@ BOOL FileSaveEx(BOOL bSaveAlways,BOOL bAsk,BOOL bSaveAs,BOOL bSaveCopy,BOOL bAll
         if (!bSaveCopy)
         {
           lstrcpy(szCurFile,tchFile);
+          StopFileRecoveryTimer(TRUE);
           InitRecoveryFilePath(szCurFile, szRecoveryFile);
           SetDlgItemText(hwndMain,IDC_FILENAME,szCurFile);
           SetDlgItemInt(hwndMain,IDC_REUSELOCK,GetTickCount(),FALSE);

@@ -145,6 +145,7 @@ LRESULT MsgCreate(HWND,WPARAM,LPARAM);
 void    CreateBars(HWND,HINSTANCE);
 void    MsgThemeChanged(HWND,WPARAM,LPARAM);
 void    MsgSize(HWND,WPARAM,LPARAM);
+void    PopulateRecoveredFilesMenu(HMENU);
 void    MsgInitMenu(HWND,WPARAM,LPARAM);
 LRESULT MsgCommand(HWND,WPARAM,LPARAM);
 LRESULT MsgNotify(HWND,WPARAM,LPARAM);
