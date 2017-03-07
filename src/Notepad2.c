@@ -58,7 +58,6 @@ HWND      hDlgFindReplace = NULL;
 #define NUMTOOLBITMAPS  25
 #define NUMINITIALTOOLS 24
 #define MARGIN_FOLD_INDEX 2
-#define FILE_RECOVERY_INTERVAL 1500
 
 TBBUTTON  tbbMainWnd[] = { {0,IDT_FILE_NEW,TBSTATE_ENABLED,TBSTYLE_BUTTON,0,0},
                            {1,IDT_FILE_OPEN,TBSTATE_ENABLED,TBSTYLE_BUTTON,0,0},
@@ -217,6 +216,7 @@ DWORD     dwLastIOError;
 WCHAR      szCurFile[MAX_PATH+40];
 WCHAR      szRecoveryFile[MAX_PATH+50];
 WCHAR      szRecoveryDirectory[MAX_PATH];
+DWORD      iRecoveryInterval;
 BOOL       bIsRecovered = FALSE;
 BOOL       bNotARealSavePoint = FALSE;
 FILEVARS   fvCurFile;
@@ -5864,6 +5864,7 @@ void LoadSettings()
   IniSectionGetString(pIniSection,L"DefaultDirectory",L"",
     tchDefaultDir,COUNTOF(tchDefaultDir));
 
+  iRecoveryInterval = IniGetInt(pIniSection, L"AutomaticRecoveryInterval", 30000);
 
   if (!IniSectionGetString(pIniSection, L"RecoveryFileDirectory", L"", szRecoveryDirectory, COUNTOF(szRecoveryDirectory)))
   {
@@ -7105,7 +7106,7 @@ void CALLBACK FileRecoveryTimerCallback(HWND hwnd, UINT uMsg, UINT_PTR idEvent, 
 
 void StartFileRecoveryTimer() {
   if (pFileRecoveryTimer != NULL) return;
-  pFileRecoveryTimer = SetTimer(hwndMain, ID_FILERECOVERYTIMER, FILE_RECOVERY_INTERVAL, FileRecoveryTimerCallback);
+  pFileRecoveryTimer = SetTimer(hwndMain, ID_FILERECOVERYTIMER, iRecoveryInterval, FileRecoveryTimerCallback);
 }
 
 
