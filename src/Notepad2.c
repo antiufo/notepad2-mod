@@ -7374,10 +7374,16 @@ BOOL FileSaveEx(BOOL bSaveAlways,BOOL bAsk,BOOL bSaveAs,BOOL bSaveCopy,BOOL bAll
     }
   }
 
-  if (!bSaveAlways && (!bModified && iEncoding == iOriginalEncoding || bIsEmptyNewFile) && !bSaveAs && (!bModifiedSinceLastRecoverySave && bIsEmptyNewFile)) {
+  if (!bSaveAlways && (!bModified && iEncoding == iOriginalEncoding || bIsEmptyNewFile) && !bSaveAs) {
+    return TRUE;
+  }
+
+  if (!bModifiedSinceLastRecoverySave && bIsEmptyNewFile && !bSaveAs && !bSaveAlways)
+  {
     SaveRecoveryFile(); // Deletes the current empty recovery file
     return TRUE;
   }
+
 
   if (bAsk)
   {
