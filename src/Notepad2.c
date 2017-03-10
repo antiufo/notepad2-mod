@@ -2120,7 +2120,7 @@ void PopulateRecoveredFilesMenu(HMENU menu)
       
       if (GetDisplayNameForRecoveryFile(szDisplayName, findData.cFileName))
       {
-        PWCHAR szCopiedName = (PWCHAR)malloc(MAX_PATH);
+        PWCHAR szCopiedName = (PWCHAR)malloc(MAX_PATH * 2);
         wcscpy(szCopiedName, findData.cFileName);
         pRecoveryMenuItems[iRecoveryMenuItemsCount] = szCopiedName;
 
