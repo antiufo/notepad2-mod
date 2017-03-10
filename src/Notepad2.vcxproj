@@ -228,7 +228,7 @@
     <None Include="..\res\Prev.bmp" />
     <None Include="..\res\Run.ico" />
     <None Include="..\res\Styles.ico" />
-    <None Include="..\res\Toolbar.bmp" />
+    <None Include="..\res\Toolbar3.bmp" />
     <None Include="Notepad2.ver" />
   </ItemGroup>
   <ItemGroup>

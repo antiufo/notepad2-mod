@@ -590,7 +590,7 @@ $(NP2_SRC_OBJDIR)\Notepad2.res: \
     $(NP2_RES)\Prev.bmp \
     $(NP2_RES)\Run.ico \
     $(NP2_RES)\Styles.ico \
-    $(NP2_RES)\Toolbar.bmp
+    $(NP2_RES)\Toolbar3.bmp
 
 $(NP2_SRC_OBJDIR)\Print.obj: \
     $(NP2_SRC)\Print.cpp \
