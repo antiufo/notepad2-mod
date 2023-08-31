@@ -204,8 +204,6 @@
 #define IDM_FILE_MANAGEFAV              40019
 #define IDM_FILE_RECENT                 40020
 #define IDM_FILE_EXIT                   40021
-#define IDM_FILE_RECOVERED              40022
-#define IDM_FILE_RECOVERED_MAX          40050
 #define IDM_ENCODING_ANSI               40100
 #define IDM_ENCODING_UNICODE            40101
 #define IDM_ENCODING_UNICODEREV         40102
@@ -427,6 +425,9 @@
 #define IDS_SETTINGSNOTSAVED            50039
 #define IDS_EXPORT_FAIL                 50040
 #define IDS_CMDLINEHELP                 60000
+
+#define IDM_FILE_RECOVERED              60001
+#define IDM_FILE_RECOVERED_MAX          (IDM_FILE_RECOVERED + MAX_RECOVERY_MENU_ITEMS)
 
 // Next default values for new objects
 //

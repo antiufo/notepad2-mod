@@ -2126,6 +2126,7 @@ void PopulateRecoveredFilesMenu(HMENU menu)
 
         AppendMenu(menu, MF_STRING | MF_ENABLED, IDM_FILE_RECOVERED + iRecoveryMenuItemsCount, szDisplayName);
         iRecoveryMenuItemsCount++;
+        if (iRecoveryMenuItemsCount == MAX_RECOVERY_MENU_ITEMS) return;
       }
       if (!FindNextFile(hFind, &findData)) break;
     }
