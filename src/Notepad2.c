@@ -3760,9 +3760,9 @@ LRESULT MsgCommand(HWND hwnd,WPARAM wParam,LPARAM lParam)
         }
         else
         {
-           // define (behöver bara göra detta en gång egentligen)
-           //SendMessage( hwndEdit , SCI_MARKERSETBACK , 0 , 74 | (203 << 8) | (0 << 16) ); //behöver bara göra detta en gång egentligen
-           //SendMessage( hwndEdit , SCI_MARKERDEFINE , 0 , SC_MARK_ARROWS );    //behöver bara göra detta en gång egentligen
+           // define (behÃ¶ver bara gÃ¶ra detta en gÃ¥ng egentligen)
+           //SendMessage( hwndEdit , SCI_MARKERSETBACK , 0 , 74 | (203 << 8) | (0 << 16) ); //behÃ¶ver bara gÃ¶ra detta en gÃ¥ng egentligen
+           //SendMessage( hwndEdit , SCI_MARKERDEFINE , 0 , SC_MARK_ARROWS );    //behÃ¶ver bara gÃ¶ra detta en gÃ¥ng egentligen
 
             if( bShowSelectionMargin )
             {
@@ -3776,8 +3776,8 @@ LRESULT MsgCommand(HWND hwnd,WPARAM wParam,LPARAM lParam)
             }
 
 
-            //SendMessage( hwndEdit , SCI_MARKERSETBACK , 0 , 180 | (255 << 8) | (180 << 16) ); //behöver bara göra detta en gång egentligen
-            //SendMessage( hwndEdit , SCI_MARKERDEFINE , 0 , SC_MARK_BACKGROUND );    //behöver bara göra detta en gång egentligen
+            //SendMessage( hwndEdit , SCI_MARKERSETBACK , 0 , 180 | (255 << 8) | (180 << 16) ); //behÃ¶ver bara gÃ¶ra detta en gÃ¥ng egentligen
+            //SendMessage( hwndEdit , SCI_MARKERDEFINE , 0 , SC_MARK_BACKGROUND );    //behÃ¶ver bara gÃ¶ra detta en gÃ¥ng egentligen
 
             // set
             SendMessage( hwndEdit , SCI_MARKERADD , iLine , 0 );
@@ -5432,9 +5432,31 @@ LRESULT MsgNotify(HWND hwnd,WPARAM wParam,LPARAM lParam)
         case SCN_MODIFIED:
           if (bIgnoreNextChangeNotificationForRecovery) {
             bIgnoreNextChangeNotificationForRecovery = FALSE;
-          }else{
-            bModifiedSinceLastRecoverySave = TRUE;
-            StartFileRecoveryTimer();
+          }
+          else
+          {
+            if (SendMessage(hwndEdit, SCI_GETLENGTH, 0, 0))
+            {
+                StartFileRecoveryTimer();
+                if (!bModified) 
+                {
+                    bModified = TRUE;
+                    SetWindowTitle(hwnd, uidsAppTitle, fIsElevated, IDS_UNTITLED, szCurFile,
+                        iPathNameFormat, bModified || iEncoding != iOriginalEncoding,
+                        IDS_READONLY, bReadOnly, szTitleExcerpt, bIsRecovered);
+                }
+            } 
+            else 
+            {
+                if (wcslen(szCurFile) == 0) 
+                {
+                    bModified = FALSE;
+                    StopFileRecoveryTimer(TRUE);
+                    SetWindowTitle(hwnd, uidsAppTitle, fIsElevated, IDS_UNTITLED, szCurFile,
+                        iPathNameFormat, bModified || iEncoding != iOriginalEncoding,
+                        IDS_READONLY, bReadOnly, szTitleExcerpt, bIsRecovered);
+                }
+            }
           }
           // Fall throuh
         case SCN_ZOOM:
@@ -5462,7 +5484,6 @@ LRESULT MsgNotify(HWND hwnd,WPARAM wParam,LPARAM lParam)
 
         case SCN_SAVEPOINTLEFT:
           bModified = TRUE;
-          bModifiedSinceLastRecoverySave = TRUE;
           StartFileRecoveryTimer();
           SetWindowTitle(hwnd,uidsAppTitle,fIsElevated,IDS_UNTITLED,szCurFile,
             iPathNameFormat,bModified || iEncoding != iOriginalEncoding,
@@ -7106,6 +7127,7 @@ void CALLBACK FileRecoveryTimerCallback(HWND hwnd, UINT uMsg, UINT_PTR idEvent, 
 }
 
 void StartFileRecoveryTimer() {
+  bModifiedSinceLastRecoverySave = TRUE;
   if (pFileRecoveryTimer != NULL) return;
   pFileRecoveryTimer = SetTimer(hwndMain, ID_FILERECOVERYTIMER, iRecoveryInterval, FileRecoveryTimerCallback);
 }
