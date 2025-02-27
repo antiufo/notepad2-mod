@@ -5451,6 +5451,7 @@ LRESULT MsgNotify(HWND hwnd,WPARAM wParam,LPARAM lParam)
                 if (wcslen(szCurFile) == 0) 
                 {
                     bModified = FALSE;
+                    bIsRecovered = FALSE;
                     StopFileRecoveryTimer(TRUE);
                     SetWindowTitle(hwnd, uidsAppTitle, fIsElevated, IDS_UNTITLED, szCurFile,
                         iPathNameFormat, bModified || iEncoding != iOriginalEncoding,
