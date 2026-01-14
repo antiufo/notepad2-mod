@@ -2,45 +2,69 @@
 // All platform headers should be included before Scintilla headers
 // and each of these groups are then divided into directory groups.
 
+// Qt platform layer not handled as it doesn't define a strong ordering of headers.
+
+// Base of the repository relative to this file
+
+//base:..
+
+// File patterns to check:
+//source:include/*.h
+//source:src/*.cxx
+//source:lexlib/*.cxx
+//source:lexers/*.cxx
+//source:win32/*.cxx
+//source:gtk/*.cxx
+//source:cocoa/*.mm
+//source:cocoa/*.h
+//source:test/unit/*.cxx
+
 // C standard library
 #include <stddef.h>
-#include <stdlib.h>
 #include <stdint.h>
-#include <string.h>
-#include <stdio.h>
-#include <stdarg.h>
-#include <time.h>
-#include <math.h>
-#include <assert.h>
-#include <ctype.h>
-#include <limits.h>
-#include <sys/time.h>
 
 // C++ wrappers of C standard library
+#include <cstddef>
 #include <cstdlib>
+#include <cstdint>
 #include <cassert>
 #include <cstring>
-#include <cctype>
 #include <cstdio>
 #include <cstdarg>
+#include <ctime>
 #include <cmath>
+#include <climits>
 
 // C++ standard library
 #include <stdexcept>
 #include <new>
 #include <string>
+#include <string_view>
 #include <vector>
-#include <deque>
+#include <array>
 #include <map>
 #include <set>
+#include <forward_list>
+#include <optional>
 #include <algorithm>
+#include <iterator>
 #include <functional>
 #include <memory>
+#include <numeric>
+#include <chrono>
+#include <charconv>
 #include <regex>
 #include <iostream>
 #include <sstream>
+#include <fstream>
+#include <iomanip>
+#include <atomic>
+#include <mutex>
+#include <thread>
+#include <future>
+#include <type_traits>
 
-// GTK+ headers
+// GTK headers
 #include <glib.h>
 #include <gmodule.h>
 #include <gdk/gdk.h>
@@ -48,16 +72,20 @@
 #include <gdk/gdkkeysyms.h>
 #include <gdk/gdkwayland.h>
 #include <gtk/gtk-a11y.h>
+#include <cairo/cairo-gobject.h>
 
 // Windows headers
 #include <windows.h>
 #include <commctrl.h>
 #include <richedit.h>
 #include <windowsx.h>
+#include <shellscalingapi.h>
 #include <zmouse.h>
 #include <ole2.h>
-#include <d2d1.h>
-#include <dwrite.h>
+#include <wrl.h>
+#include <d2d1_1.h>
+#include <d3d11_1.h>
+#include <dwrite_1.h>
 
 // Cocoa headers
 #include <Cocoa/Cocoa.h>
@@ -70,43 +98,36 @@
 
 // Non-platform-specific headers
 
-// include
-#include "Platform.h"
+// Exported headers
 
 #include "Sci_Position.h"
+#include "ScintillaTypes.h"
+#include "ScintillaMessages.h"
+#include "ScintillaStructures.h"
+#include "ILoader.h"
 #include "ILexer.h"
+
+// src platform interface
+#include "Debugging.h"
+#include "Geometry.h"
+#include "Platform.h"
+
 #include "Scintilla.h"
 #include "ScintillaWidget.h"
 
-#include "SciLexer.h"
-
-// lexlib
-#include "StringCopy.h"
-#include "PropSetSimple.h"
-#include "WordList.h"
-#include "LexAccessor.h"
-#include "Accessor.h"
-#include "StyleContext.h"
-#include "CharacterSet.h"
-#include "CharacterCategory.h"
-#include "LexerModule.h"
-#include "OptionSet.h"
-#include "SparseState.h"
-#include "SubStyles.h"
-#include "LexerBase.h"
-#include "LexerSimple.h"
-#include "LexerNoExceptions.h"
-
 // src
-#include "Catalogue.h"
-
+#include "CharacterType.h"
+#include "CharacterCategoryMap.h"
 #include "Position.h"
+#include "UniqueString.h"
 #include "SplitVector.h"
 #include "Partitioning.h"
 #include "RunStyles.h"
 #include "SparseVector.h"
 #include "ContractionState.h"
+#include "ChangeHistory.h"
 #include "CellBuffer.h"
+#include "UndoHistory.h"
 #include "PerLine.h"
 #include "CallTip.h"
 #include "KeyMap.h"
@@ -122,27 +143,31 @@
 #include "RESearch.h"
 #include "CaseConvert.h"
 #include "UniConversion.h"
-#include "UnicodeFromUTF8.h"
+#include "DBCS.h"
 #include "Selection.h"
 #include "PositionCache.h"
-#include "FontQuality.h"
 #include "EditModel.h"
 #include "MarginView.h"
 #include "EditView.h"
 #include "Editor.h"
+#include "ElapsedPeriod.h"
 
 #include "AutoComplete.h"
 #include "ScintillaBase.h"
 
-#include "ExternalLexer.h"
-
 // Platform-specific headers
 
 // win32
+#include "WinTypes.h"
 #include "PlatWin.h"
+#include "ListBox.h"
+#include "SurfaceGDI.h"
+#include "SurfaceD2D.h"
 #include "HanjaDic.h"
+#include "ScintillaWin.h"
 
 // gtk
+#include "Wrappers.h"
 #include "ScintillaGTK.h"
 #include "scintilla-marshal.h"
 #include "ScintillaGTKAccessible.h"
@@ -151,6 +176,7 @@
 // cocoa
 #include "QuartzTextStyle.h"
 #include "QuartzTextStyleAttribute.h"
+#include "DictionaryForCF.h"
 #include "QuartzTextLayout.h"
 #import "InfoBarCommunicator.h"
 #include "InfoBar.h"
